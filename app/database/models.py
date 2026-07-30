@@ -1,11 +1,4 @@
-"""
-ORM models mirroring Part 3 of the blueprint.
 
-`profiles` references `auth.users` from Supabase Auth. If you're NOT using
-Supabase Auth (e.g. running Postgres locally with no auth schema), swap the
-ForeignKey on Profile.id for a plain UUID column and handle auth yourself —
-everything downstream (owner_id FKs) still works unchanged.
-"""
 import uuid
 from datetime import datetime
 
@@ -25,7 +18,7 @@ def gen_uuid():
 class Profile(Base):
     __tablename__ = "profiles"
 
-    id = Column(UUID(as_uuid=True), primary_key=True)  # == auth.users.id
+    id = Column(UUID(as_uuid=True), primary_key=True)  
     display_name = Column(String)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
@@ -105,6 +98,7 @@ class Citation(Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
     claim = relationship("Claim", back_populates="citations")
+    chunk = relationship("Chunk") 
 
 
 class Job(Base):

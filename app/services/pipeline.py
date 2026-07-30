@@ -1,24 +1,17 @@
-"""
-The one file that knows the full end-to-end order of operations
-(blueprint Part 2). API routes stay thin and just call `run_full_pipeline`.
 
-Parser choice: PyMuPDF is the default (no Docker needed). If
-settings.GROBID_BASE_URL is set, we try the GROBID cloud API first and
-fall back to PyMuPDF on any failure or timeout — this is the same
-GROBID -> fallback swap pattern the original blueprint used, just pointed
-at a public endpoint instead of a local container.
-"""
 import logging
 import uuid
 
 from sqlalchemy.orm import Session
 
-from app.database.models import Paper, PaperSection, Chunk, Job
+from app.database.models import Paper, PaperSection, Chunk, Job, Claim, Citation
 from app.parser import pymupdf_parser, grobid_client
 from app.parser.pymupdf_parser import PdfParseError
 from app.parser.chunker import chunk_sections
 from app.embeddings.embedder import embed_texts, check_token_truncation
 from app.retrieval import vector_store
+from app.agents.orchestrator import run_agent_pipeline
+from app.agents.state import ChunkRef
 
 logger = logging.getLogger("pipeline")
 
@@ -47,11 +40,21 @@ def run_full_pipeline(db: Session, paper: Paper, job: Job) -> None:
         _set_step(db, paper, job, status="embedding", step=f"Embedding {len(chunks)} chunks")
         chunk_rows = _save_chunks_and_embed(db, paper, section_rows, chunks)
 
-        _set_step(db, paper, job, status="extracting", step="Ready for claim extraction")
-        # NOTE: claim extraction + grounding (the agent layer) is wired in
-        # separately once app/agents/orchestrator.py exists — see Part 17,
-        # Day 2 of the blueprint. This function's job ends at "chunks are
-        # embedded and searchable."
+        _set_step(db, paper, job, status="extracting", step="Extracting claims")
+        chunk_refs = [
+            ChunkRef(
+                chunk_id=str(row.id),
+                vector_id=row.vector_id,
+                text=row.text,
+                section_heading=row.section.heading if row.section else None,
+                page_number=row.page_number,
+            )
+            for row in chunk_rows
+        ]
+        grounded_claims, agent_trace = run_agent_pipeline(str(paper.id), chunk_refs)
+
+        _set_step(db, paper, job, status="extracting", step="Saving grounded claims")
+        _save_grounded_claims(db, paper, chunk_rows, grounded_claims)
 
         paper.status = "ready"
         paper.current_step = "Done"
@@ -140,6 +143,36 @@ def _save_chunks_and_embed(
     )
 
     return chunk_rows
+
+
+def _save_grounded_claims(
+    db: Session, paper: Paper, chunk_rows: list[Chunk], grounded_claims
+) -> None:
+    """
+    Writes grounded claims + their citations to Postgres. Ungrounded
+    claims never reach this point — citation_grounder.py already dropped
+    them (blueprint: the entire pitch depends on this rule holding).
+    """
+    chunk_by_vector_id = {row.vector_id: row for row in chunk_rows}
+
+    for gc in grounded_claims:
+        claim_row = Claim(paper_id=paper.id, claim_type=gc.claim_type, text=gc.text)
+        db.add(claim_row)
+        db.flush()  # need claim_row.id for the citations below
+
+        for cite in gc.citations:
+            chunk_row = chunk_by_vector_id.get(cite.chunk_id)
+            if chunk_row is None:
+                logger.warning("Citation referenced unknown chunk_id %s, skipping", cite.chunk_id)
+                continue
+            db.add(Citation(
+                claim_id=claim_row.id,
+                chunk_id=chunk_row.id,
+                similarity_score=str(cite.similarity_score),
+                entailment_score=str(cite.entailment_score),
+            ))
+
+    db.flush()
 
 
 def _set_step(db: Session, paper: Paper, job: Job, status: str, step: str) -> None:

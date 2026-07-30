@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.api import papers, jobs
+from app.api import paper, jobs
 
 app = FastAPI(title="Research Paper Briefing Agent")
 
@@ -14,7 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(papers.router)
+app.include_router(paper.router)
 app.include_router(jobs.router)
 
 

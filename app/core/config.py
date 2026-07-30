@@ -5,22 +5,28 @@ class Settings(BaseSettings):
     
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/postgres"
 
-    # --- File storage ---
+    
     UPLOAD_DIR: str = "./uploads"
 
-    # --- Parsing ---
     
     GROBID_BASE_URL: str = ""
 
-    # --- Embeddings / vector store ---
+    
     CHROMA_PERSIST_DIR: str = "./chroma_data"
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
 
-    # --- Chunking ---
+    
     CHUNK_TARGET_TOKENS: int = 450
     CHUNK_MAX_TOKENS: int = 800
 
-    # --- CORS ---
+  
+    LLM_PROVIDER: str = "gemini"          # "gemini" | "groq" — flip this if one rate-limits mid-demo
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
+
+    
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
     class Config:

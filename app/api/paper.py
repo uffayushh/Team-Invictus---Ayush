@@ -2,12 +2,15 @@ import os
 import uuid
 
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.database.session import get_db
-from app.database.models import Paper, Job
-from app.schemas.paper import PaperUploadResponse, PaperStatusResponse
+from app.database.models import Paper, Job, Claim
+from app.schemas.paper import (
+    PaperUploadResponse, PaperStatusResponse,
+    PaperSummaryResponse, ClaimOut, CitationOut,
+)
 from app.services.pipeline import run_full_pipeline
 
 router = APIRouter(prefix="/papers", tags=["papers"])
@@ -86,8 +89,7 @@ def process_paper(
 
 
 def _run_pipeline_task(paper_id: uuid.UUID, job_id: uuid.UUID):
-    """Runs in the BackgroundTasks thread — needs its own DB session,
-    can't reuse the request-scoped one from Depends(get_db)."""
+    
     from app.database.session import SessionLocal
 
     db = SessionLocal()
@@ -113,3 +115,45 @@ def get_paper_status(paper_id: uuid.UUID, db: Session = Depends(get_db)):
         current_step=paper.current_step,
         error_message=paper.error_message,
     )
+
+
+@router.get("/{paper_id}/summary", response_model=PaperSummaryResponse)
+def get_paper_summary(paper_id: uuid.UUID, db: Session = Depends(get_db)):
+    
+    paper = db.query(Paper).filter(Paper.id == paper_id).first()
+    if not paper:
+        raise HTTPException(status_code=404, detail={"error": {
+            "code": "paper_not_found", "message": "No paper with that ID."}})
+
+    if paper.status != "ready":
+        raise HTTPException(status_code=409, detail={"error": {
+            "code": "paper_not_ready",
+            "message": f"Paper is still processing (status: {paper.status}). Poll /status until ready.",
+        }})
+
+    claims = (
+        db.query(Claim)
+        .options(joinedload(Claim.citations))
+        .filter(Claim.paper_id == paper_id)
+        .all()
+    )
+
+    claim_outs = []
+    for claim in claims:
+        citation_outs = []
+        for cite in claim.citations:
+            chunk = cite.chunk  # relies on Citation.chunk relationship — see note below
+            citation_outs.append(CitationOut(
+                chunk_text=chunk.text if chunk else "",
+                section_heading=chunk.section.heading if chunk and chunk.section else None,
+                page_number=chunk.page_number if chunk else None,
+                similarity_score=float(cite.similarity_score) if cite.similarity_score else None,
+            ))
+        claim_outs.append(ClaimOut(
+            id=claim.id,
+            claim_type=claim.claim_type,
+            text=claim.text,
+            citations=citation_outs,
+        ))
+
+    return PaperSummaryResponse(paper_id=paper.id, title=paper.title, claims=claim_outs)

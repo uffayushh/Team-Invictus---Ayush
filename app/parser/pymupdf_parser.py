@@ -22,7 +22,7 @@ that case fine, it just won't have section-level citation granularity.
 import re
 from dataclasses import dataclass
 
-import fitz  # PyMuPDF
+import fitz  
 
 COMMON_HEADINGS = {
     "abstract", "introduction", "related work", "background",
