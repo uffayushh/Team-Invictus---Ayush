@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Chroma data (local vector store — don't commit generated data)
+chroma_data/
+
+# Test artifacts
+test_paper.pdf
+*.apkg
+*.pptx
+
+# OS
+.DS_Store
