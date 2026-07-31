@@ -1,8 +1,4 @@
-"""
-Chroma running embedded (in-process, PersistentClient) — no server, no
-Docker. Data persists to disk at settings.CHROMA_PERSIST_DIR between
-restarts.
-"""
+
 import chromadb
 
 from app.core.config import settings
@@ -20,6 +16,7 @@ def _get_collection():
         _collection = _client.get_or_create_collection(
             name=COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
+            embedding_function=None, 
         )
     return _collection
 
@@ -30,7 +27,6 @@ def upsert_chunks(
     documents: list[str],
     metadatas: list[dict],
 ) -> None:
-    """metadatas should include at least: paper_id, chunk_id, section_heading, page_number."""
     collection = _get_collection()
     collection.upsert(
         ids=vector_ids,
@@ -45,7 +41,6 @@ def query(
     n_results: int = 8,
     paper_id: str | None = None,
 ) -> list[dict]:
-    """Returns [{id, text, metadata, distance}, ...] sorted by relevance."""
     collection = _get_collection()
     where = {"paper_id": paper_id} if paper_id else None
 
@@ -67,6 +62,6 @@ def query(
 
 
 def delete_paper_vectors(paper_id: str) -> None:
-    """Called when a paper is deleted, keeps Chroma from accumulating orphans."""
     collection = _get_collection()
+    collection.delete(where={"paper_id": paper_id})
     collection.delete(where={"paper_id": paper_id})
