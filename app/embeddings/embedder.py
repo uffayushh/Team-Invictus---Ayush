@@ -1,3 +1,4 @@
+
 import logging
 import time
 
@@ -80,5 +81,4 @@ def _embed_batch(texts: list[str], task_type: str) -> list[list[float]]:
             last_error = e
             logger.warning("embed_batch malformed response attempt=%d/%d: %s", attempt, MAX_RETRIES + 1, e)
 
-    raise EmbeddingError(f"Embedding request failed after {MAX_RETRIES + 1} attempts: {last_error}")ize(text))
-    return token_count > MAX_SEQ_TOKENS
+    raise EmbeddingError(f"Embedding request failed after {MAX_RETRIES + 1} attempts: {last_error}")
